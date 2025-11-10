@@ -5,7 +5,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node router.js",
-    "dev": "node router.js"
+    "dev": "node router.js",
+    "build": "echo 'No build step required'"
   },
   "keywords": [],
   "author": "",

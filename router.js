@@ -1,7 +1,7 @@
-const express = require('express');
-const bcrypt = require('bcrypt');
-const dotenv = require('dotenv');
-const { pool } = require('./db.js');
+import express from 'express';
+import bcrypt from 'bcrypt';
+import dotenv from 'dotenv';
+import { pool } from './db.js';
 
 dotenv.config();
 

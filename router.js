@@ -1,7 +1,7 @@
-import express from 'express';
-import bcrypt from 'bcrypt';
-import dotenv from 'dotenv';
-import { pool } from './db.js';
+const express = require('express');
+const bcrypt = require('bcrypt');
+const dotenv = require('dotenv');
+const { pool } = require('./db.js');
 
 dotenv.config();
 
@@ -11,6 +11,7 @@ console.log("🤖 Gemini API Key:", process.env.GEMINI_API_KEY ? "✅ Set" : "�
 
 const app = express();
 
+// Simple JSON parsing middleware
 app.use(express.json());
 
 // CORS middleware
@@ -24,49 +25,45 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoints
+// Removed timeout middleware - let Railway handle timeouts
+
+// Simple root endpoint for Railway
 app.get('/', (req, res) => {
-  res.json({ status: 'OK', message: 'Maternity AI Backend is running' });
+  res.json({ status: 'OK', message: 'Backend is running' });
 });
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is healthy' });
 });
 
-// Initialize database tables (with error handling)
-(async () => {
-  try {
-    if (!process.env.DATABASE_URL) {
-      console.error("❌ DATABASE_URL environment variable is not set");
-      return;
+// Initialize database tables asynchronously (won't block app startup)
+if (process.env.DATABASE_URL) {
+  setTimeout(async () => {
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          password VARCHAR(255) NOT NULL
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS chats (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          title VARCHAR(255),
+          user_input TEXT NOT NULL,
+          advice_output TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log("✅ Database tables initialized");
+    } catch (error) {
+      console.error("Database setup error:", error.message);
     }
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL
-      );
-    `);
-    console.log("✅ Users table ready");
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS chats (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        title VARCHAR(255),
-        user_input TEXT NOT NULL,
-        advice_output TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    console.log("✅ Chats table ready");
-  } catch (error) {
-    console.error("❌ Database initialization error:", error.message);
-    // Don't crash the app - just log the error
-  }
-})();
+  }, 1000);
+}
 
 app.post('/signup', async (req, res) => {
   const { email, password } = req.body;
@@ -100,10 +97,14 @@ app.post('/login', async (req, res) => {
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
 
-    if (!user) return res.status(400).json({ error: 'User not found' });
+    if (!user) {
+      return res.status(400).json({ error: 'User not found' });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     res.json({ message: 'Login successful' });
   } catch (error) {

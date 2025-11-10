@@ -1,12 +1,11 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "router.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node router.js",
-    "dev": "node router.js",
-    "build": "echo 'No build step required'"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "keywords": [],
   "author": "",

@@ -424,10 +424,8 @@ app.use((err, req, res, next) => {
 export default app;
 
 // Start server locally (only when not on Railway)
-if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
   });
-}
 

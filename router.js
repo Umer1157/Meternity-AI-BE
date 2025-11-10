@@ -19,6 +19,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check endpoints
+app.get('/', (req, res) => {
+  res.json({ status: 'OK', message: 'Maternity AI Backend is running' });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', message: 'Server is healthy' });
+});
+
 (async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -374,5 +383,5 @@ app.delete('/api/chats/:id', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// Export the app for Railway deployment
+export default app;

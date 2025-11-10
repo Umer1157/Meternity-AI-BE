@@ -1,5 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+import cors from 'cors';
 import dotenv from 'dotenv';
 import { pool } from './db.js';
 
@@ -8,16 +9,8 @@ const app = express();
 
 app.use(express.json());
 
-// CORS middleware
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  next();
-});
+// Enable CORS for all origins
+app.use(cors());
 
 (async () => {
   await pool.query(`

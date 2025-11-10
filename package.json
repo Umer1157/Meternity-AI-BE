@@ -1,10 +1,11 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "router.js",
+  "main": "api/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node router.js"
+    "start": "node api/index.js",
+    "dev": "node -e \"import('./api/index.js').then(m => { const express = require('express'); const app = express(); app.use('/', m.default); app.listen(process.env.PORT || 5000, () => console.log('🚀 Dev server running on port', process.env.PORT || 5000))); })\""
   },
   "keywords": [],
   "author": "",

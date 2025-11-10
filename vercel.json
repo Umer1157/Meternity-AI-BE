@@ -1,19 +1,7 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "router.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "router.js"
-    }
-  ],
   "functions": {
-    "router.js": {
+    "api/index.js": {
       "maxDuration": 30
     }
   }

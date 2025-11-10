@@ -4,6 +4,11 @@ import dotenv from 'dotenv';
 import { pool } from './db.js';
 
 dotenv.config();
+
+console.log("🚀 Starting Maternity AI Backend...");
+console.log("📊 Database URL:", process.env.DATABASE_URL ? "✅ Set" : "❌ Not set");
+console.log("🤖 Gemini API Key:", process.env.GEMINI_API_KEY ? "✅ Set" : "❌ Not set");
+
 const app = express();
 
 app.use(express.json());
@@ -28,45 +33,68 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is healthy' });
 });
 
+// Initialize database tables (with error handling)
 (async () => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      email VARCHAR(255) UNIQUE NOT NULL,
-      password VARCHAR(255) NOT NULL
-    );
-  `);
-  console.log("✅ Users table ready");
+  try {
+    if (!process.env.DATABASE_URL) {
+      console.error("❌ DATABASE_URL environment variable is not set");
+      return;
+    }
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS chats (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      title VARCHAR(255),
-      user_input TEXT NOT NULL,
-      advice_output TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-  console.log("✅ Chats table ready");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL
+      );
+    `);
+    console.log("✅ Users table ready");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chats (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255),
+        user_input TEXT NOT NULL,
+        advice_output TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("✅ Chats table ready");
+  } catch (error) {
+    console.error("❌ Database initialization error:", error.message);
+    // Don't crash the app - just log the error
+  }
 })();
 
 app.post('/signup', async (req, res) => {
   const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     await pool.query('INSERT INTO users (email, password) VALUES ($1, $2)', [email, hashedPassword]);
     res.status(201).json({ message: 'User registered successfully' });
   } catch (error) {
-    console.error(error);
-    res.status(400).json({ error: 'User already exists or invalid data' });
+    console.error('Signup error:', error);
+    if (error.code === '23505') { // Unique constraint violation
+      res.status(400).json({ error: 'User already exists' });
+    } else {
+      res.status(500).json({ error: 'Server error during registration' });
+    }
   }
 });
 
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
 
   try {
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -79,8 +107,8 @@ app.post('/login', async (req, res) => {
 
     res.json({ message: 'Login successful' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Server error during login' });
   }
 });
 
@@ -102,8 +130,8 @@ app.post('/api/generate', async (req, res) => {
 
     // Verify API key exists
     if (!process.env.GEMINI_API_KEY) {
-      console.error("GEMINI_API_KEY is not set in environment variables");
-      return res.status(500).json({ error: 'API key not configured' });
+      console.error("❌ GEMINI_API_KEY is not set in environment variables");
+      return res.status(500).json({ error: 'Gemini API key not configured. Please set GEMINI_API_KEY environment variable.' });
     }
 
     // Call Gemini API
@@ -381,6 +409,12 @@ app.delete('/api/chats/:id', async (req, res) => {
     console.error(error);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // Export the app for Railway deployment

@@ -1,42 +1,35 @@
-import express from 'express';
-import bcrypt from 'bcrypt';
-import dotenv from 'dotenv';
-import { pool } from './db.js';
+import express from "express";
+import bcrypt from "bcrypt";
+import dotenv from "dotenv";
+import { pool } from "./db.js";
 
 dotenv.config();
 
-console.log("🚀 Starting Maternity AI Backend...");
-console.log("📊 Database URL:", process.env.DATABASE_URL ? "✅ Set" : "❌ Not set");
-console.log("🤖 Gemini API Key:", process.env.GEMINI_API_KEY ? "✅ Set" : "❌ Not set");
-
 const app = express();
 
-// Simple JSON parsing middleware
 app.use(express.json());
 
-// CORS middleware
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
   next();
 });
 
-// Removed timeout middleware - let Railway handle timeouts
-
-// Simple root endpoint for Railway
-app.get('/', (req, res) => {
-  res.json({ status: 'OK', message: 'Backend is running' });
+app.get("/", (req, res) => {
+  res.json({ status: "OK", message: "Backend is running" });
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is healthy' });
+app.get("/health", (req, res) => {
+  res.json({ status: "OK", message: "Server is healthy" });
 });
 
-// Initialize database tables asynchronously (won't block app startup)
 if (process.env.DATABASE_URL) {
   setTimeout(async () => {
     try {
@@ -58,93 +51,87 @@ if (process.env.DATABASE_URL) {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      console.log("✅ Database tables initialized");
     } catch (error) {
       console.error("Database setup error:", error.message);
     }
   }, 1000);
 }
 
-app.post('/signup', async (req, res) => {
+app.post("/signup", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+    return res.status(400).json({ error: "Email and password are required" });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    await pool.query('INSERT INTO users (email, password) VALUES ($1, $2)', [email, hashedPassword]);
-    res.status(201).json({ message: 'User registered successfully' });
+    await pool.query("INSERT INTO users (email, password) VALUES ($1, $2)", [
+      email,
+      hashedPassword,
+    ]);
+    res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
-    console.error('Signup error:', error);
-    if (error.code === '23505') { // Unique constraint violation
-      res.status(400).json({ error: 'User already exists' });
+    if (error.code === "23505") {
+      res.status(400).json({ error: "User already exists" });
     } else {
-      res.status(500).json({ error: 'Server error during registration' });
+      res.status(500).json({ error: "Server error during registration" });
     }
   }
 });
 
-app.post('/login', async (req, res) => {
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+    return res.status(400).json({ error: "Email and password are required" });
   }
 
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
     const user = result.rows[0];
 
     if (!user) {
-      return res.status(400).json({ error: 'User not found' });
+      return res.status(400).json({ error: "User not found" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    res.json({ message: 'Login successful' });
+    res.json({ message: "Login successful" });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Server error during login' });
+    res.status(500).json({ error: "Server error during login" });
   }
 });
 
-// Generate advice endpoint
-app.post('/api/generate', async (req, res) => {
-  console.log("API /generate called");
-  console.log("Request method:", req.method);
-  console.log("GEMINI_API_KEY loaded:", process.env.GEMINI_API_KEY ? "YES" : "NO");
-
+app.post("/api/generate", async (req, res) => {
   try {
     const { userInput } = req.body || {};
-    
+
     if (!userInput) {
-      console.log("No userInput provided");
-      return res.status(400).json({ error: 'userInput is required' });
+      return res.status(400).json({ error: "userInput is required" });
     }
 
-    console.log("User input:", userInput);
-
-    // Verify API key exists
     if (!process.env.GEMINI_API_KEY) {
-      console.error("❌ GEMINI_API_KEY is not set in environment variables");
-      return res.status(500).json({ error: 'Gemini API key not configured. Please set GEMINI_API_KEY environment variable.' });
+      return res
+        .status(500)
+        .json({
+          error:
+            "Gemini API key not configured. Please set GEMINI_API_KEY environment variable.",
+        });
     }
 
-    // Call Gemini API
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
-    
-    console.log("Calling Gemini API...");
-    
+
     const gRes = await fetch(geminiUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
       },
       body: JSON.stringify({
         contents: [
@@ -182,164 +169,152 @@ Start your response now with the warm sentence, then the formatted advice in the
       }),
     });
 
-    console.log("Gemini API response status:", gRes.status);
-    
     const data = await gRes.json();
-    console.log("Gemini API response:", JSON.stringify(data, null, 2));
 
     if (!gRes.ok) {
-      console.error('Gemini API error:', data);
-      return res.status(gRes.status).json({ 
-        error: data.error?.message || 'Gemini API error', 
-        details: data 
+      return res.status(gRes.status).json({
+        error: data.error?.message || "Gemini API error",
+        details: data,
       });
     }
 
-    // Check if response has expected structure
     if (!data.candidates || data.candidates.length === 0) {
-      console.error('No candidates in response:', data);
-      return res.status(500).json({ 
-        error: 'No response generated',
-        details: data
+      return res.status(500).json({
+        error: "No response generated",
+        details: data,
       });
     }
 
-    console.log("Successfully generated response");
-    
-    // Return successful response
     return res.status(200).json(data);
-    
   } catch (err) {
-    console.error('Server error:', err);
-    console.error('Error stack:', err.stack);
-    return res.status(500).json({ 
-      error: 'Internal server error',
-      message: err.message 
+    return res.status(500).json({
+      error: "Internal server error",
+      message: err.message,
     });
   }
 });
 
-// Get all chats for a user
-app.get('/api/chats', async (req, res) => {
+app.get("/api/chats", async (req, res) => {
   try {
     const { email } = req.query;
-    
+
     if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
+      return res.status(400).json({ error: "Email is required" });
     }
-    
-    // Get user by email
-    const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email]
+    );
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
-    
+
     const userId = userResult.rows[0].id;
-    
-    // Get all chats for this user
+
     const result = await pool.query(
-      'SELECT id, title, user_input, advice_output, created_at, updated_at FROM chats WHERE user_id = $1 ORDER BY updated_at DESC',
+      "SELECT id, title, user_input, advice_output, created_at, updated_at FROM chats WHERE user_id = $1 ORDER BY updated_at DESC",
       [userId]
     );
-    
+
     res.json(result.rows);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Get a specific chat by ID
-app.get('/api/chats/:id', async (req, res) => {
+app.get("/api/chats/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { email } = req.query;
-    
+
     if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
+      return res.status(400).json({ error: "Email is required" });
     }
-    
-    // Get user by email
-    const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email]
+    );
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
-    
+
     const userId = userResult.rows[0].id;
-    
-    // Get chat
+
     const result = await pool.query(
-      'SELECT id, title, user_input, advice_output, created_at, updated_at FROM chats WHERE id = $1 AND user_id = $2',
+      "SELECT id, title, user_input, advice_output, created_at, updated_at FROM chats WHERE id = $1 AND user_id = $2",
       [id, userId]
     );
-    
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Chat not found' });
+      return res.status(404).json({ error: "Chat not found" });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Create a new chat
-app.post('/api/chats', async (req, res) => {
+app.post("/api/chats", async (req, res) => {
   try {
     const { email, userInput, adviceOutput, title } = req.body;
-    
+
     if (!email || !userInput || !adviceOutput) {
-      return res.status(400).json({ error: 'Email, userInput, and adviceOutput are required' });
+      return res
+        .status(400)
+        .json({ error: "Email, userInput, and adviceOutput are required" });
     }
-    
-    // Get user by email
-    const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email]
+    );
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
-    
+
     const userId = userResult.rows[0].id;
-    
-    // Create chat title from first 50 chars of input if not provided
-    const chatTitle = title || userInput.substring(0, 50) + (userInput.length > 50 ? '...' : '');
-    
-    // Insert new chat
+
+    const chatTitle =
+      title ||
+      userInput.substring(0, 50) + (userInput.length > 50 ? "..." : "");
+
     const result = await pool.query(
-      'INSERT INTO chats (user_id, title, user_input, advice_output) VALUES ($1, $2, $3, $4) RETURNING id, title, user_input, advice_output, created_at, updated_at',
+      "INSERT INTO chats (user_id, title, user_input, advice_output) VALUES ($1, $2, $3, $4) RETURNING id, title, user_input, advice_output, created_at, updated_at",
       [userId, chatTitle, userInput, adviceOutput]
     );
-    
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Update a chat
-app.put('/api/chats/:id', async (req, res) => {
+app.put("/api/chats/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { email, userInput, adviceOutput, title } = req.body;
-    
+
     if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
+      return res.status(400).json({ error: "Email is required" });
     }
-    
-    // Get user by email
-    const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email]
+    );
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
-    
+
     const userId = userResult.rows[0].id;
-    
-    // Build update query dynamically
+
     const updates = [];
     const values = [];
     let paramCount = 1;
-    
+
     if (title !== undefined) {
       updates.push(`title = $${paramCount++}`);
       values.push(title);
@@ -352,80 +327,72 @@ app.put('/api/chats/:id', async (req, res) => {
       updates.push(`advice_output = $${paramCount++}`);
       values.push(adviceOutput);
     }
-    
+
     if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
+      return res.status(400).json({ error: "No fields to update" });
     }
-    
+
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(id, userId);
-    
-    // Update chat
+
     const result = await pool.query(
-      `UPDATE chats SET ${updates.join(', ')} WHERE id = $${paramCount++} AND user_id = $${paramCount} RETURNING id, title, user_input, advice_output, created_at, updated_at`,
+      `UPDATE chats SET ${updates.join(
+        ", "
+      )} WHERE id = $${paramCount++} AND user_id = $${paramCount} RETURNING id, title, user_input, advice_output, created_at, updated_at`,
       values
     );
-    
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Chat not found' });
+      return res.status(404).json({ error: "Chat not found" });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Delete a chat
-app.delete('/api/chats/:id', async (req, res) => {
+app.delete("/api/chats/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { email } = req.query;
-    
+
     if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
+      return res.status(400).json({ error: "Email is required" });
     }
-    
-    // Get user by email
-    const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email]
+    );
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
-    
+
     const userId = userResult.rows[0].id;
-    
-    // Delete chat
+
     const result = await pool.query(
-      'DELETE FROM chats WHERE id = $1 AND user_id = $2 RETURNING id',
+      "DELETE FROM chats WHERE id = $1 AND user_id = $2 RETURNING id",
       [id, userId]
     );
-    
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Chat not found' });
+      return res.status(404).json({ error: "Chat not found" });
     }
-    
-    res.json({ message: 'Chat deleted successfully' });
+
+    res.json({ message: "Chat deleted successfully" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Global error handler
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: "Internal server error" });
 });
 
-
-
-// Export the app for Railway deployment
 export default app;
 
-// Start server locally (only when not on Railway)
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-  });
-
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

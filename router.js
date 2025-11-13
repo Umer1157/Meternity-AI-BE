@@ -2,6 +2,7 @@ import express from "express";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import { pool } from "./db.js";
+import axios from "axios";
 
 dotenv.config();
 
@@ -10,11 +11,11 @@ const app = express();
 app.use(express.json());
 
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', '*');
-  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
 
@@ -57,25 +58,53 @@ if (process.env.DATABASE_URL) {
 }
 
 app.post("/signup", async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, recaptchaToken } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password are required" });
   }
 
+  if (!recaptchaToken) {
+    return res.status(400).json({ msg: "reCAPTCHA token is missing." });
+  }
+
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await pool.query("INSERT INTO users (email, password) VALUES ($1, $2)", [
-      email,
-      hashedPassword,
-    ]);
-    res.status(201).json({ message: "User registered successfully" });
-  } catch (error) {
-    if (error.code === "23505") {
-      res.status(400).json({ error: "User already exists" });
-    } else {
-      res.status(500).json({ error: "Server error during registration" });
+    const verificationURL = "https://www.google.com/recaptcha/api/siteverify";
+
+    const response = await axios.post(verificationURL, null, {
+      params: {
+        secret: process.env.RECAPTCHA_SECRET_KEY,
+        response: recaptchaToken,
+      },
+    });
+
+    const { success } = response.data;
+
+    if (!success) {
+      return res
+        .status(400)
+        .json({ msg: "reCAPTCHA verification failed. Bot detected." });
     }
+
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      await pool.query("INSERT INTO users (email, password) VALUES ($1, $2)", [
+        email,
+        hashedPassword,
+      ]);
+
+      res.status(201).json({ message: "User registered successfully" });
+    } catch (error) {
+      if (error.code === "23505") {
+        res.status(400).json({ error: "User already exists" });
+      } else {
+        res.status(500).json({ error: "Server error during registration" });
+      }
+    }
+  } catch (error) {
+    console.error("Error during reCAPTCHA or registration:", error);
+    res.status(500).json({ msg: "Server error" });
   }
 });
 
@@ -116,12 +145,10 @@ app.post("/api/generate", async (req, res) => {
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res
-        .status(500)
-        .json({
-          error:
-            "Gemini API key not configured. Please set GEMINI_API_KEY environment variable.",
-        });
+      return res.status(500).json({
+        error:
+          "Gemini API key not configured. Please set GEMINI_API_KEY environment variable.",
+      });
     }
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
